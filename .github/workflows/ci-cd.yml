@@ -1,23 +1,25 @@
-name: CI/CD (DocLoom backend)
+name: CI/CD (DocLoom backend, GitOps deploy 分支)
 
-# 推 master 自动触发;也支持手动
+# 推 master 触发;CI 只把部署 tag 写到 deploy/staging 分支,master 保持干净。
+# 推 deploy/staging 不会触发本工作流(只听 master),无递归。
 on:
   push:
     branches: [master]
   workflow_dispatch:
 
-# image-updater 模式:CI 只 build + push,不碰 git;部署由 image-updater + Argo 完成。
 permissions:
-  contents: read
+  contents: write   # 需回推 deploy/staging
 
 jobs:
-  build-publish:
+  build-publish-gitops:
     runs-on: self-hosted
     env:
       IMAGE: localhost:5000/docloom-backend
     steps:
-      - name: 拉代码
+      - name: 拉代码(完整历史,便于回推 deploy 分支)
         uses: actions/checkout@v4
+        with:
+          fetch-depth: '0'
 
       - name: 计算镜像 tag
         id: tag
@@ -29,23 +31,62 @@ jobs:
       - name: 推送到本地 registry
         run: docker push $IMAGE:${{ steps.tag.outputs.sha }}
 
-      - name: 等 image-updater 同步并滚动
+      - name: 更新 GitOps 镜像标签
+        env:
+          TAG: ${{ steps.tag.outputs.sha }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          tag = os.environ["TAG"]
+          p = Path("deploy/gitops/overlays/staging/kustomization.yaml")
+          lines = p.read_text(encoding="utf-8").splitlines()
+          hit = False
+          for i, line in enumerate(lines):
+              if line.strip().startswith("newTag:"):
+                  indent = line[: len(line) - len(line.lstrip())]
+                  lines[i] = f"{indent}newTag: {tag}"
+                  hit = True
+                  break
+          if not hit:
+              raise SystemExit("ERROR: kustomization.yaml 里找不到 newTag")
+          p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+          print(f"newTag -> {tag}")
+          PY
+
+      - name: 渲染校验
+        run: |
+          export PATH=/usr/local/bin:$PATH
+          kubectl kustomize deploy/gitops/overlays/staging > /tmp/rendered.yaml
+          test -s /tmp/rendered.yaml
+          grep -q "image: localhost:5000/docloom-backend:${{ steps.tag.outputs.sha }}" /tmp/rendered.yaml \
+            || { echo "渲染后镜像未替换为本次 sha"; exit 1; }
+
+      - name: 提交并 force-push 到 deploy/staging
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deploy/gitops/overlays/staging/kustomization.yaml
+          git commit -m "deploy(staging): ${{ steps.tag.outputs.sha }}"
+          # deploy/staging 是部署状态分支,每次以 master+本次tag 覆盖,不积累历史
+          git push --force origin HEAD:deploy/staging
+
+      - name: 等 Argo 同步并滚动
         env:
           KUBECONFIG: /home/mrlu/.kube/config
           NEW_IMG: $IMAGE:${{ steps.tag.outputs.sha }}
         run: |
           export PATH=/usr/local/bin:$PATH
-          # image-updater 轮询 registry(约2min一次),拿到最新 tag 后在线写回 Application,
-          # Argo 据此把 deployment 切到新镜像。这里轮询 deployment image 是否切到本次 sha。
+          # Argo 轮询 deploy/staging(~3min),拿到新 tag 后把 deployment 切到新镜像
           for i in $(seq 1 40); do
             CUR=$(kubectl get deployment docloom-backend -n docloom -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null)
             if [ "$CUR" = "$NEW_IMG" ]; then
-              echo "image-updater 已切到 $CUR,等滚动完成"
+              echo "Argo 已切到 $CUR,等滚动完成"
               kubectl rollout status deployment/docloom-backend -n docloom --timeout=300s
               exit 0
             fi
-            echo "等待 image-updater 切镜像 (当前=$CUR, 期望=$NEW_IMG) ... ($i/40)"
+            echo "等待 Argo 同步 (当前 image=$CUR, 期望=$NEW_IMG) ... ($i/40)"
             sleep 15
           done
-          echo "超时:image-updater 10 分钟内未把 deployment 切到新镜像。检查 image-updater 日志 / Argo UI。" >&2
+          echo "超时:Argo 10 分钟内未把 deployment 切到新镜像。检查 Argo UI。" >&2
           exit 1
