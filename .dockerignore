@@ -1,0 +1,14 @@
+# 构建上下文排除: 不进镜像、加速 build
+**/target/
+.idea/
+.git/
+.gitignore
+.gitattributes
+.github/
+**/*.iml
+*.iws
+*.ipr
+HELP.md
+deploy/gitops/
+deploy/manifests/
+ruoyi-admin/Dockerfile

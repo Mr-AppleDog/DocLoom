@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: docloom-backend-staging
+  namespace: argocd
+  annotations:
+    # image-updater 监听这个镜像(本地 registry);hostNetwork pod 可访问 localhost:5000
+    argocd-image-updater.argoproj.io/image-list: docloom-backend=localhost:5000/docloom-backend
+    # 写回方式=argocd:在线改 Application,不提交 git -> main 历史零污染
+    argocd-image-updater.argoproj.io/write-back-method: argocd
+    # 取最新 tag(按 registry 推送时间排序,sha-xxxx 最新者胜)
+    argocd-image-updater.argoproj.io/update-strategy: latest
+    argocd-image-updater.argoproj.io/force-update: "true"
+spec:
+  project: default
+  source:
+    # 单仓库 GitOps:Argo 只读拉取本仓库的 staging overlay
+    repoURL: https://github.com/Mr-AppleDog/DocLoom.git
+    targetRevision: master
+    path: deploy/gitops/overlays/staging
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: docloom
+  syncPolicy:
+    automated:
+      prune: false        # 起步不删资源
+      selfHeal: true      # 集群漂移自动回到期望态
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true

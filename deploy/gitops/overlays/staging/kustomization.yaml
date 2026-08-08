@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 所有资源落到独立 namespace,与默认 default / cicd 隔离
+namespace: docloom
+
+resources:
+  - ../../base
+
+# 镜像坐标:base 里写的是逻辑名 docloom-backend:placeholder,
+# 这里改写成本地 registry 的真实坐标 + 占位 tag。
+# 实际 tag 不写进 git,由 argocd-image-updater 在线覆盖(write-back=argocd)。
+images:
+  - name: docloom-backend
+    newName: localhost:5000/docloom-backend
+    newTag: placeholder

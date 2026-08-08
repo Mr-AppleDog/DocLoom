@@ -1,0 +1,51 @@
+name: CI/CD (DocLoom backend)
+
+# 推 master 自动触发;也支持手动
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+# image-updater 模式:CI 只 build + push,不碰 git;部署由 image-updater + Argo 完成。
+permissions:
+  contents: read
+
+jobs:
+  build-publish:
+    runs-on: self-hosted
+    env:
+      IMAGE: localhost:5000/docloom-backend
+    steps:
+      - name: 拉代码
+        uses: actions/checkout@v4
+
+      - name: 计算镜像 tag
+        id: tag
+        run: echo "sha=sha-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: 构建镜像
+        run: docker build -t $IMAGE:${{ steps.tag.outputs.sha }} .
+
+      - name: 推送到本地 registry
+        run: docker push $IMAGE:${{ steps.tag.outputs.sha }}
+
+      - name: 等 image-updater 同步并滚动
+        env:
+          KUBECONFIG: /home/mrlu/.kube/config
+          NEW_IMG: $IMAGE:${{ steps.tag.outputs.sha }}
+        run: |
+          export PATH=/usr/local/bin:$PATH
+          # image-updater 轮询 registry(约2min一次),拿到最新 tag 后在线写回 Application,
+          # Argo 据此把 deployment 切到新镜像。这里轮询 deployment image 是否切到本次 sha。
+          for i in $(seq 1 40); do
+            CUR=$(kubectl get deployment docloom-backend -n docloom -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null)
+            if [ "$CUR" = "$NEW_IMG" ]; then
+              echo "image-updater 已切到 $CUR,等滚动完成"
+              kubectl rollout status deployment/docloom-backend -n docloom --timeout=300s
+              exit 0
+            fi
+            echo "等待 image-updater 切镜像 (当前=$CUR, 期望=$NEW_IMG) ... ($i/40)"
+            sleep 15
+          done
+          echo "超时:image-updater 10 分钟内未把 deployment 切到新镜像。检查 image-updater 日志 / Argo UI。" >&2
+          exit 1
