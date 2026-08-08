@@ -1,14 +1,14 @@
 name: CI/CD (DocLoom backend, GitOps deploy 分支)
 
-# 推 master 触发;CI 只把部署 tag 写到 deploy/staging 分支,master 保持干净。
-# 推 deploy/staging 不会触发本工作流(只听 master),无递归。
+# 推 master 触发;CI 用 kubectl apply -k 直推部署(绕开 Argo fetch 不稳),
+# deploy/staging 回写降级为 best-effort(GitOps 记录)。master 保持干净。
 on:
   push:
     branches: [master]
   workflow_dispatch:
 
 permissions:
-  contents: write   # 需回推 deploy/staging
+  contents: write
 
 jobs:
   build-publish-gitops:
@@ -16,7 +16,7 @@ jobs:
     env:
       IMAGE: localhost:5000/docloom-backend
     steps:
-      - name: 拉代码(完整历史,便于回推 deploy 分支)
+      - name: 拉代码(完整历史)
         uses: actions/checkout@v4
         with:
           fetch-depth: '0'
@@ -62,40 +62,24 @@ jobs:
           grep -q "image: localhost:5000/docloom-backend:${{ steps.tag.outputs.sha }}" /tmp/rendered.yaml \
             || { echo "渲染后镜像未替换为本次 sha"; exit 1; }
 
-      - name: 提交并 force-push 到 deploy/staging
+      - name: kubectl 直推部署(apply -k, 绕开 Argo fetch 不稳)
+        env:
+          KUBECONFIG: /home/mrlu/.kube/config
+        run: |
+          export PATH=/usr/local/bin:$PATH
+          kubectl create namespace docloom 2>/dev/null || true
+          kubectl apply -k deploy/gitops/overlays/staging
+          kubectl rollout status deployment/docloom-backend -n docloom --timeout=300s
+
+      - name: 回写 deploy/staging(GitOps 记录, best-effort)
+        continue-on-error: true
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add deploy/gitops/overlays/staging/kustomization.yaml
           git commit -m "deploy(staging): ${{ steps.tag.outputs.sha }}"
-          # deploy/staging 是部署状态分支,每次以 master+本次tag 覆盖,不积累历史
           for i in $(seq 1 6); do
-            if git push --force origin HEAD:deploy/staging; then
-              echo "push OK 第${i}次"
-              exit 0
-            fi
-            echo "push 第${i}次失败,15s 后重试(github 偶发连接重置)"
+            if git push --force origin HEAD:deploy/staging; then echo "push OK 第${i}次"; exit 0; fi
             sleep 15
           done
-          echo "push 6 次均失败" >&2
-          exit 1
-
-      - name: 等 Argo 同步并滚动
-        env:
-          KUBECONFIG: /home/mrlu/.kube/config
-          NEW_IMG: $IMAGE:${{ steps.tag.outputs.sha }}
-        run: |
-          export PATH=/usr/local/bin:$PATH
-          # Argo 轮询 deploy/staging(~3min),拿到新 tag 后把 deployment 切到新镜像
-          for i in $(seq 1 40); do
-            CUR=$(kubectl get deployment docloom-backend -n docloom -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null)
-            if [ "$CUR" = "$NEW_IMG" ]; then
-              echo "Argo 已切到 $CUR,等滚动完成"
-              kubectl rollout status deployment/docloom-backend -n docloom --timeout=300s
-              exit 0
-            fi
-            echo "等待 Argo 同步 (当前 image=$CUR, 期望=$NEW_IMG) ... ($i/40)"
-            sleep 15
-          done
-          echo "超时:Argo 10 分钟内未把 deployment 切到新镜像。检查 Argo UI。" >&2
-          exit 1
+          echo "deploy/staging push 失败(非关键,已用 kubectl 直推部署)" >&2
