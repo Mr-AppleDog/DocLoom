@@ -69,7 +69,16 @@ jobs:
           git add deploy/gitops/overlays/staging/kustomization.yaml
           git commit -m "deploy(staging): ${{ steps.tag.outputs.sha }}"
           # deploy/staging 是部署状态分支,每次以 master+本次tag 覆盖,不积累历史
-          git push --force origin HEAD:deploy/staging
+          for i in $(seq 1 6); do
+            if git push --force origin HEAD:deploy/staging; then
+              echo "push OK 第${i}次"
+              exit 0
+            fi
+            echo "push 第${i}次失败,15s 后重试(github 偶发连接重置)"
+            sleep 15
+          done
+          echo "push 6 次均失败" >&2
+          exit 1
 
       - name: 等 Argo 同步并滚动
         env:
