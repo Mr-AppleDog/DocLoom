@@ -17,4 +17,12 @@ public interface IDocSyncService {
      */
     DocSourceVo sync(Long sourceId);
 
+    /**
+     * 异步同步：立即返回，同步在 Spring 异步线程池中执行（避免长任务阻塞 HTTP、触发 nginx 超时）。
+     * 进度通过 doc_source 状态字段（last_sync_status=2 同步中 / 1 成功 / 0 失败）承载，前端轮询查询。
+     *
+     * @param sourceId 文档来源id
+     */
+    void syncAsync(Long sourceId);
+
 }

@@ -2,6 +2,7 @@ package org.dromara.doc.service.impl;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.core.utils.StringUtils;
 import org.dromara.doc.client.GhTreeEntry;
@@ -16,6 +17,7 @@ import org.dromara.doc.parser.ParseResult;
 import org.dromara.doc.parser.UnsupportedFormatException;
 import org.dromara.doc.service.IDocSearchService;
 import org.dromara.doc.service.IDocSyncService;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.util.Date;
@@ -32,6 +34,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * @author DocLoom
  */
+@Slf4j
 @RequiredArgsConstructor
 @Service
 public class DocSyncServiceImpl implements IDocSyncService {
@@ -61,6 +64,17 @@ public class DocSyncServiceImpl implements IDocSyncService {
             return doSync(source);
         } finally {
             running.remove(sourceId);
+        }
+    }
+
+    @Async
+    @Override
+    public void syncAsync(Long sourceId) {
+        // 走 Spring 异步线程池；内部直接调 sync 复用既有逻辑（running 去重 + 状态回写 + ES 双写）
+        try {
+            this.sync(sourceId);
+        } catch (Exception e) {
+            log.warn("[DocLoom] 异步同步来源 {} 失败: {}", sourceId, e.getMessage());
         }
     }
 

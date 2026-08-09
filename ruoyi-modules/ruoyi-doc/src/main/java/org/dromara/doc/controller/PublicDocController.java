@@ -3,6 +3,8 @@ package org.dromara.doc.controller;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
+import org.dromara.common.ratelimiter.annotation.RateLimiter;
+import org.dromara.common.ratelimiter.enums.LimitType;
 import org.dromara.common.web.core.BaseController;
 import org.dromara.doc.domain.vo.DocFileViewVo;
 import org.dromara.doc.domain.vo.DocFileVo;
@@ -30,6 +32,7 @@ public class PublicDocController extends BaseController {
     /**
      * 公开来源列表
      */
+    @RateLimiter(count = 20, time = 60, limitType = LimitType.IP)
     @GetMapping("/sources")
     public org.dromara.common.core.domain.R<List<DocSourceVo>> sources() {
         return org.dromara.common.core.domain.R.ok(publicDocService.listPublicSources());
@@ -38,6 +41,7 @@ public class PublicDocController extends BaseController {
     /**
      * 某来源文档目录（扁平列表，前端构建树）
      */
+    @RateLimiter(count = 60, time = 60, limitType = LimitType.IP)
     @GetMapping("/tree/{sourceId}")
     public org.dromara.common.core.domain.R<List<DocFileVo>> tree(@NotNull(message = "主键不能为空") @PathVariable Long sourceId) {
         return org.dromara.common.core.domain.R.ok(publicDocService.listFiles(sourceId));
@@ -46,6 +50,7 @@ public class PublicDocController extends BaseController {
     /**
      * 取文档渲染体
      */
+    @RateLimiter(count = 120, time = 60, limitType = LimitType.IP)
     @GetMapping("/view/{id}")
     public org.dromara.common.core.domain.R<DocFileViewVo> view(@NotNull(message = "主键不能为空") @PathVariable Long id) {
         return org.dromara.common.core.domain.R.ok(publicDocService.viewFile(id));
@@ -54,6 +59,7 @@ public class PublicDocController extends BaseController {
     /**
      * 公开检索（匿名，ES 不可用时降级 MySQL LIKE；仅检索公开来源）
      */
+    @RateLimiter(count = 30, time = 60, limitType = LimitType.IP)
     @GetMapping("/search")
     public TableDataInfo<DocSearchHitVo> search(@RequestParam(required = false) String kw,
                                                  @RequestParam(required = false) Long sourceId,

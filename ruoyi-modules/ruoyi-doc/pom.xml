@@ -83,6 +83,12 @@
             <artifactId>ruoyi-common-tenant</artifactId>
         </dependency>
 
+        <!-- SnailJob 定时任务客户端（编译 @JobExecutor；运行期由 ruoyi-admin 的 ruoyi-job 提供） -->
+        <dependency>
+            <groupId>org.dromara</groupId>
+            <artifactId>ruoyi-common-job</artifactId>
+        </dependency>
+
         <!-- Elasticsearch 检索（版本由 Spring Boot BOM 管理，自动配置 ElasticsearchClient） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
