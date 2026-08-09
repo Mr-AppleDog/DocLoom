@@ -13,4 +13,4 @@ resources:
 images:
   - name: docloom-backend
     newName: localhost:5000/docloom-backend
-    newTag: placeholder
+    newTag: sha-fce4636
