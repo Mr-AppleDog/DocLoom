@@ -116,6 +116,7 @@ security:
     - /*/api-docs
     - /*/api-docs/**
     - /warm-flow-ui/config
+    - /doc/public/**
 
 # 多租户配置
 tenant:
