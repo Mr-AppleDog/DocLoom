@@ -98,6 +98,11 @@ public class DocSource extends TenantEntity {
     private Date lastSyncTime;
 
     /**
+     * 最近一次同步信息（成功/失败原因、跳过数等）
+     */
+    private String lastSyncMsg;
+
+    /**
      * 已同步文件数
      */
     private Integer fileCount;

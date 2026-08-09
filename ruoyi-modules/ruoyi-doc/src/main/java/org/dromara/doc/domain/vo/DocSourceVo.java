@@ -102,6 +102,12 @@ public class DocSourceVo implements Serializable {
     private Date lastSyncTime;
 
     /**
+     * 最近一次同步信息
+     */
+    @ExcelProperty(value = "同步信息")
+    private String lastSyncMsg;
+
+    /**
      * 已同步文件数
      */
     @ExcelProperty(value = "文件数")
