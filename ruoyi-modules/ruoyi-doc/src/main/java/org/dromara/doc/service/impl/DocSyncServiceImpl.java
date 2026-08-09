@@ -14,6 +14,7 @@ import org.dromara.doc.mapper.DocSourceMapper;
 import org.dromara.doc.parser.DocParser;
 import org.dromara.doc.parser.ParseResult;
 import org.dromara.doc.parser.UnsupportedFormatException;
+import org.dromara.doc.service.IDocSearchService;
 import org.dromara.doc.service.IDocSyncService;
 import org.springframework.stereotype.Service;
 
@@ -26,6 +27,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 文档同步 Service 业务层处理（同步执行）
+ * <p>
+ * M4：落库后双写 ES 索引、删除时同步删 ES（best-effort，不影响同步主流程）。
  *
  * @author DocLoom
  */
@@ -37,6 +40,7 @@ public class DocSyncServiceImpl implements IDocSyncService {
     private final DocFileMapper docFileMapper;
     private final GithubClient githubClient;
     private final DocParser docParser;
+    private final IDocSearchService docSearchService;
 
     /**
      * 进行中的来源，防止重复触发
@@ -98,8 +102,9 @@ public class DocSyncServiceImpl implements IDocSyncService {
                     }
                     ParseResult parse = docParser.parse(entry.getExt(), bytes);
                     long size = bytes.length;
-
+                    Long docId;
                     if (existing != null) {
+                        docId = existing.getId();
                         docFileMapper.update(null, Wrappers.<DocFile>lambdaUpdate()
                             .set(DocFile::getSha, entry.getSha())
                             .set(DocFile::getSize, size)
@@ -121,7 +126,22 @@ public class DocSyncServiceImpl implements IDocSyncService {
                         f.setRenderHtml(parse.getRenderHtml());
                         f.setSyncTime(now);
                         docFileMapper.insert(f);
+                        docId = f.getId();
                     }
+                    // 双写 ES（best-effort，失败不影响同步）
+                    DocFile toIndex = new DocFile();
+                    toIndex.setId(docId);
+                    toIndex.setSourceId(sourceId);
+                    toIndex.setPath(entry.getPath());
+                    toIndex.setName(nameFromPath(entry.getPath()));
+                    toIndex.setExt(entry.getExt());
+                    toIndex.setSha(entry.getSha());
+                    toIndex.setSize(size);
+                    toIndex.setRawText(parse.getRawText());
+                    toIndex.setRawMd(parse.getRawMd());
+                    toIndex.setRenderHtml(parse.getRenderHtml());
+                    toIndex.setSyncTime(now);
+                    docSearchService.indexFile(toIndex, source.getName());
                     synced++;
                 } catch (UnsupportedFormatException ufe) {
                     unsupportedExts.add(ufe.getExt());
@@ -141,6 +161,8 @@ public class DocSyncServiceImpl implements IDocSyncService {
                 .toList();
             if (!toDelete.isEmpty()) {
                 docFileMapper.deleteByIds(toDelete);
+                // 同步删除 ES 索引（best-effort）
+                docSearchService.deleteFiles(toDelete);
             }
 
             long count = docFileMapper.selectCount(Wrappers.<DocFile>lambdaQuery().eq(DocFile::getSourceId, sourceId));

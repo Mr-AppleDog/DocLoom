@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Configuration;
  * @author DocLoom
  */
 @Configuration
-@EnableConfigurationProperties(DocLoomGithubProperties.class)
+@EnableConfigurationProperties({DocLoomGithubProperties.class, DocLoomEsProperties.class})
 public class DocLoomConfig {
 
 }

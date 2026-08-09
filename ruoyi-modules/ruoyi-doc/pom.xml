@@ -83,6 +83,12 @@
             <artifactId>ruoyi-common-tenant</artifactId>
         </dependency>
 
+        <!-- Elasticsearch 检索（版本由 Spring Boot BOM 管理，自动配置 ElasticsearchClient） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-elasticsearch</artifactId>
+        </dependency>
+
     </dependencies>
 
 </project>

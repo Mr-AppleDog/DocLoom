@@ -263,3 +263,34 @@ warm-flow:
   node-tooltip: true
   # 默认Authorization，如果有多个token，用逗号分隔
   token-name: ${sa-token.token-name},clientid
+
+--- # Elasticsearch 配置（文档检索，见 ruoyi-doc；ES 故障时检索自动降级 MySQL LIKE）
+spring:
+  elasticsearch:
+    # 单节点（随 /opt/middleware 栈部署，xpack.security 关闭，明文 HTTP）
+    uris: http://192.168.149.128:9200
+    connection-timeout: 5s
+    socket-timeout: 30s
+  # 不启用 Spring Data ES 仓储扫描（用原生 ElasticsearchClient 即可）
+  data:
+    elasticsearch:
+      repositories:
+        enabled: false
+# 关闭 actuator 对 ES 的健康探测（避免 ES 不可用时反复 ping）
+management:
+  health:
+    elasticsearch:
+      enabled: false
+# DocLoom 文档托管检索配置
+docloom:
+  es:
+    # 是否启用 ES 检索（false=索引 no-op、检索直接走 MySQL LIKE）
+    enabled: true
+    # 索引名
+    index-name: docloom_doc
+    # 索引期分词器（IK 细粒度）
+    index-analyzer: ik_max_word
+    # 检索期分词器（IK 智能切分）
+    search-analyzer: ik_smart
+    # 单次检索最大返回条数
+    max-results: 100

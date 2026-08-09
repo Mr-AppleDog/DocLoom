@@ -2,10 +2,11 @@ package org.dromara.doc.controller;
 
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
-import org.dromara.common.core.domain.R;
+import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.common.web.core.BaseController;
 import org.dromara.doc.domain.vo.DocFileViewVo;
 import org.dromara.doc.domain.vo.DocFileVo;
+import org.dromara.doc.domain.vo.DocSearchHitVo;
 import org.dromara.doc.domain.vo.DocSourceVo;
 import org.dromara.doc.service.IPublicDocService;
 import org.springframework.validation.annotation.Validated;
@@ -30,24 +31,35 @@ public class PublicDocController extends BaseController {
      * 公开来源列表
      */
     @GetMapping("/sources")
-    public R<List<DocSourceVo>> sources() {
-        return R.ok(publicDocService.listPublicSources());
+    public org.dromara.common.core.domain.R<List<DocSourceVo>> sources() {
+        return org.dromara.common.core.domain.R.ok(publicDocService.listPublicSources());
     }
 
     /**
      * 某来源文档目录（扁平列表，前端构建树）
      */
     @GetMapping("/tree/{sourceId}")
-    public R<List<DocFileVo>> tree(@NotNull(message = "主键不能为空") @PathVariable Long sourceId) {
-        return R.ok(publicDocService.listFiles(sourceId));
+    public org.dromara.common.core.domain.R<List<DocFileVo>> tree(@NotNull(message = "主键不能为空") @PathVariable Long sourceId) {
+        return org.dromara.common.core.domain.R.ok(publicDocService.listFiles(sourceId));
     }
 
     /**
      * 取文档渲染体
      */
     @GetMapping("/view/{id}")
-    public R<DocFileViewVo> view(@NotNull(message = "主键不能为空") @PathVariable Long id) {
-        return R.ok(publicDocService.viewFile(id));
+    public org.dromara.common.core.domain.R<DocFileViewVo> view(@NotNull(message = "主键不能为空") @PathVariable Long id) {
+        return org.dromara.common.core.domain.R.ok(publicDocService.viewFile(id));
+    }
+
+    /**
+     * 公开检索（匿名，ES 不可用时降级 MySQL LIKE；仅检索公开来源）
+     */
+    @GetMapping("/search")
+    public TableDataInfo<DocSearchHitVo> search(@RequestParam(required = false) String kw,
+                                                 @RequestParam(required = false) Long sourceId,
+                                                 @RequestParam(defaultValue = "1") int pageNum,
+                                                 @RequestParam(defaultValue = "10") int pageSize) {
+        return publicDocService.search(kw, sourceId, pageNum, pageSize);
     }
 
 }

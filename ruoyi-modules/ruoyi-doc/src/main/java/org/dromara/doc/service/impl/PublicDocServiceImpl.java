@@ -3,19 +3,24 @@ package org.dromara.doc.service.impl;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.exception.ServiceException;
+import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.common.tenant.helper.TenantHelper;
 import org.dromara.doc.domain.DocFile;
 import org.dromara.doc.domain.DocSource;
 import org.dromara.doc.domain.vo.DocFileViewVo;
 import org.dromara.doc.domain.vo.DocFileVo;
+import org.dromara.doc.domain.vo.DocSearchHitVo;
 import org.dromara.doc.domain.vo.DocSourceVo;
 import org.dromara.doc.mapper.DocFileMapper;
 import org.dromara.doc.mapper.DocSourceMapper;
+import org.dromara.doc.service.IDocSearchService;
 import org.dromara.doc.service.IPublicDocService;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 公开阅读面 Service 业务层处理
@@ -30,6 +35,7 @@ public class PublicDocServiceImpl implements IPublicDocService {
 
     private final DocSourceMapper docSourceMapper;
     private final DocFileMapper docFileMapper;
+    private final IDocSearchService docSearchService;
 
     @Override
     public List<DocSourceVo> listPublicSources() {
@@ -83,6 +89,29 @@ public class PublicDocServiceImpl implements IPublicDocService {
                 v.setType("unsupported");
             }
             return v;
+        });
+    }
+
+    @Override
+    public TableDataInfo<DocSearchHitVo> search(String kw, Long sourceId, int pageNum, int pageSize) {
+        return TenantHelper.ignore(() -> {
+            // 公开检索仅限 public_visible=1 的来源
+            Set<Long> allowed;
+            if (sourceId != null) {
+                if (!isPublic(sourceId)) {
+                    return new TableDataInfo<>(Collections.emptyList(), 0L);
+                }
+                allowed = Collections.singleton(sourceId);
+            } else {
+                List<DocSource> pubs = docSourceMapper.selectList(Wrappers.<DocSource>lambdaQuery()
+                    .select(DocSource::getId)
+                    .eq(DocSource::getPublicVisible, "1"));
+                allowed = pubs.stream().map(DocSource::getId).collect(Collectors.toSet());
+            }
+            if (allowed.isEmpty()) {
+                return new TableDataInfo<>(Collections.emptyList(), 0L);
+            }
+            return docSearchService.search(kw, allowed, pageNum, pageSize);
         });
     }
 
