@@ -350,6 +350,13 @@
                 <version>${revision}</version>
             </dependency>
 
+            <!--  文档托管模块  -->
+            <dependency>
+                <groupId>org.dromara</groupId>
+                <artifactId>ruoyi-doc</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
             <!--  工作流模块  -->
             <dependency>
                 <groupId>org.dromara</groupId>
