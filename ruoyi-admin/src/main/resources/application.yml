@@ -294,3 +294,7 @@ docloom:
     search-analyzer: ik_smart
     # 单次检索最大返回条数
     max-results: 100
+  # 定时全量同步（Spring @Scheduled；SnailJob Server 未部署时的回退方案，启用 SnailJob 后可改走框架原生调度）
+  sync:
+    # 定时同步 cron 表达式，默认每小时 :30
+    cron: "0 30 * * * ?"
